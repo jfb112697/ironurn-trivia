@@ -1,0 +1,13 @@
+{
+  "name": "@ironurn/data",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline build pipeline that turns public baseball data (pybaseball / Baseball Reference / Lahman) into compact, CDN-friendly datasets for IronUrn Trivia.",
+  "scripts": {
+    "fetch": "node scripts/run-python.mjs fetch",
+    "build": "node scripts/run-python.mjs build",
+    "refresh": "node scripts/run-python.mjs refresh",
+    "schedule": "node scripts/run-python.mjs schedule",
+    "all": "node scripts/run-python.mjs all"
+  }
+}

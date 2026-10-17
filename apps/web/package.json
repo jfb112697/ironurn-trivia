@@ -1,0 +1,27 @@
+{
+  "name": "@ironurn/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "IronUrn Trivia — React client for Pinpoint (Daily, Mini and Free Play).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "deploy": "wrangler pages deploy dist --project-name=ironurn"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "wrangler": "^3.78.0"
+  }
+}

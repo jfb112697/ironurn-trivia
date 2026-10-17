@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# build output
+dist/
+apps/web/dist/
+workers/api/.wrangler/
+.wrangler/
+
+# generated data (large, reproduced by `npm run data:all`)
+data/raw/
+data/out/
+
+# env
+.env
+.env.*
+!.env.example
+
+# misc
+*.log
+.DS_Store
+Thumbs.db

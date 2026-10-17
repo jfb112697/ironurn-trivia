@@ -1,0 +1,12 @@
+# Normalise line endings to LF in the repository so Windows checkouts and the
+# Linux CI runners agree byte-for-byte.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

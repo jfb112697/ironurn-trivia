@@ -1,0 +1,19 @@
+name = "ironurn-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# Static datasets live in R2 and are served through the edge cache, so a warm
+# deployment answers reads without touching R2 at all.
+[[r2_buckets]]
+binding = "DATASET"
+bucket_name = "ironurn-dataset"
+
+[vars]
+# Object key prefix inside the bucket (bump to publish a new dataset revision).
+DATASET_PREFIX = "v1"
+# Comma-separated allowed origins, or "*" for any (the data is public).
+ALLOWED_ORIGIN = "*"
+
+[observability]
+enabled = true

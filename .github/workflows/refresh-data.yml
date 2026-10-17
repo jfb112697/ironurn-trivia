@@ -1,0 +1,98 @@
+name: Refresh dataset
+
+# Rebuilds the dataset from pybaseball (Baseball Reference + Chadwick) and
+# uploads it to R2. This is the "keep the data current" job — change the cron
+# below to taste, or trigger it by hand from the Actions tab.
+#
+#   • Daily at 09:17 UTC        -> "17 9 * * *"
+#   • Every 6 hours             -> "17 */6 * * *"
+#   • Hourly during the season  -> "17 * 3-10 * *"
+#
+# Note: GitHub disables scheduled workflows in repositories that have had no
+# activity for 60 days. Push a commit, or re-enable it from the Actions tab.
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      end_season:
+        description: "Last season to include (blank = newest the sources have)"
+        required: false
+        type: string
+      modern_from:
+        description: "First season sourced from Baseball Reference"
+        required: false
+        default: "2022"
+        type: string
+
+concurrency:
+  group: refresh-dataset
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Rebuild and upload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: data/requirements.txt
+
+      - name: Install pipeline dependencies
+        run: pip install -r data/requirements.txt
+
+      - name: Rebuild the dataset (pybaseball + Lahman)
+        working-directory: data
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.modern_from }}" ]; then
+            ARGS="$ARGS --modern-from ${{ inputs.modern_from }}"
+          fi
+          if [ -n "${{ inputs.end_season }}" ]; then
+            ARGS="$ARGS --end-season ${{ inputs.end_season }}"
+          fi
+          python -m pipeline refresh $ARGS
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ensure the R2 bucket exists
+        run: npx wrangler r2 bucket create "$R2_BUCKET" || true
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'ironurn-dataset' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Upload the dataset to R2
+        run: node scripts/seed-r2.mjs
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'ironurn-dataset' }}
+          DATASET_PREFIX: ${{ vars.DATASET_PREFIX || 'v1' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Job summary
+        run: |
+          {
+            echo "### Dataset refreshed"
+            echo
+            echo '```json'
+            cat data/out/meta.json | python -m json.tool | head -n 20
+            echo '```'
+            echo
+            echo "A new revision is picked up by clients within about a minute"
+            echo "(the manifest is served with a short TTL; every other dataset file"
+            echo "is version-keyed by the manifest's \`generated\` timestamp)."
+          } >> "$GITHUB_STEP_SUMMARY"

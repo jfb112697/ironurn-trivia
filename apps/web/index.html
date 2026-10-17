@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f14" />
+    <title>IronUrn Trivia — Baseball Pinpoint</title>
+    <meta
+      name="description"
+      content="Free, unlimited, account-free baseball trivia. Name the top players by stat, year range and pool. Daily, Mini and Free Play."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      /* Critical shell styles so first paint never waits on the bundle. */
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #0b0f14;
+        color: #e8edf4;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      #boot {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        gap: 14px;
+        text-align: center;
+        font-size: 14px;
+        color: #7d8ea3;
+      }
+      #boot .urn {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: 3px solid #1d2632;
+        border-top-color: #63d2a4;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="boot">
+        <div class="urn"></div>
+        <div>Warming up the bullpen…</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

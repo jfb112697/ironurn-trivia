@@ -1,0 +1,17 @@
+{
+  "name": "@ironurn/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Edge API for IronUrn Trivia — serves compact datasets from R2 and resolves daily puzzles deterministically.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "typescript": "^5.6.2",
+    "wrangler": "^3.78.0"
+  }
+}

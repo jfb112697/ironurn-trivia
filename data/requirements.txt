@@ -1,0 +1,8 @@
+# IronUrn data pipeline dependencies.
+#
+# pybaseball is the primary data source (Baseball Reference WAR + season stats,
+# Chadwick register). pandas is pinned below 3.x because pybaseball 2.2.x still
+# uses a handful of pandas-2 idioms.
+pybaseball==2.2.7
+pandas>=2.2,<3
+requests>=2.31
