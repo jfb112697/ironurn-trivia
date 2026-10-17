@@ -8,6 +8,7 @@ import { Stats } from "./pages/Stats";
 import { HowToPlay } from "./pages/HowToPlay";
 import { Archive } from "./pages/Archive";
 import { loadTemplates } from "./lib/data";
+import { getActiveGame } from "./lib/activeGame";
 import { dateKey, puzzleFor } from "./lib/schedule";
 import { navigate, useRoute } from "./lib/router";
 import { dailyResult } from "./lib/storage";
@@ -65,6 +66,21 @@ export default function App() {
       const puzzle = puzzleFor(tpl, date, mode);
       page = <DailyGate key={`${mode}:${date}`} puzzle={puzzle} onExit={goHome} />;
     }
+  } else if (segments[0] === "resume") {
+    const game = getActiveGame();
+    page = game ? (
+      <Play key="resume" config={game.config} onExit={goHome} />
+    ) : (
+      <div className="card">
+        <h2>No game in progress</h2>
+        <p className="small">
+          Start a Daily, Mini, Free Play or Live board and it will be waiting here until you finish it.
+        </p>
+        <button className="btn" onClick={goHome}>
+          Back to the games
+        </button>
+      </div>
+    );
   } else {
     page = (
       <div className="card">

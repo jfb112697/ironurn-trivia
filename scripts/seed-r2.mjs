@@ -24,7 +24,8 @@ const PREFIX = (process.env.DATASET_PREFIX || "v1").replace(/\/+$/, "");
 const DRY = process.argv.includes("--dry-run");
 
 const IMMUTABLE = new Set(["meta.json", "players.json", "teams.json", "batting.json", "pitching.json", "war.json", "templates.json"]);
-const cacheControlFor = (file) => (IMMUTABLE.has(file) ? "public, max-age=31536000, immutable" : "public, max-age=300");
+// No spaces: these are passed through a Windows shell (see `wrangler()` below).
+const cacheControlFor = (file) => (IMMUTABLE.has(file) ? "public,max-age=31536000,immutable" : "public,max-age=300");
 
 function wrangler(args) {
   const res = spawnSync("npx", ["wrangler", ...args], {
@@ -59,7 +60,7 @@ async function main() {
       "put",
       key,
       `--file=${path}`,
-      "--content-type=application/json; charset=utf-8",
+      "--content-type=application/json",
       `--cache-control=${cacheControlFor(file)}`,
       "--remote",
     ]);

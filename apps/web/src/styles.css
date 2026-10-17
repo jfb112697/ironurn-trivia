@@ -56,6 +56,11 @@ button {
   padding: 0 18px 72px;
 }
 
+/* Consistent breathing room below the sticky header on every page. */
+main.shell {
+  padding-top: 28px;
+}
+
 /* ── header ───────────────────────────────────────────────────────────── */
 .top {
   position: sticky;
@@ -453,7 +458,10 @@ p {
 .board {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
+  /* `clip` trims the rounded corners like `hidden`, but — unlike `hidden` — it
+     does not create a scroll container, so the sticky column header below can
+     pin to the viewport instead of being trapped inside the board. */
+  overflow: clip;
   background: var(--panel);
 }
 
@@ -470,7 +478,7 @@ p {
   color: var(--muted-2);
   font-weight: 700;
   position: sticky;
-  top: 57px;
+  top: var(--header-h, 57px);
   z-index: 20;
   backdrop-filter: blur(8px);
 }
@@ -927,4 +935,123 @@ table.stats .n {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* ── resume bar ───────────────────────────────────────────────────────── */
+/* Mobile first: a bar across the bottom, above the home indicator. On wide
+   screens it becomes a card in the bottom-right corner. */
+.resume {
+  position: fixed;
+  z-index: 60;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 9px 9px 14px;
+  border: 1px solid rgba(99, 210, 164, 0.32);
+  border-radius: 14px;
+  background: rgba(15, 23, 32, 0.95);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+
+.resume-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.resume-k {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resume-t {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resume .btn {
+  flex: none;
+}
+
+.resume-x {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.resume-x:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+/* Keep the fixed bar from covering the footer. */
+body.has-resume {
+  padding-bottom: 86px;
+}
+
+@media (min-width: 720px) {
+  .resume {
+    left: auto;
+    right: 22px;
+    bottom: 22px;
+    width: 400px;
+    padding: 10px 10px 10px 16px;
+  }
+}
+
+/* ── small screens ────────────────────────────────────────────────────── */
+/* Keep the header on one row: the nav scrolls sideways instead of wrapping,
+   which also keeps the header height (and the board's sticky offset) stable. */
+@media (max-width: 720px) {
+  .top-inner {
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .brand small {
+    display: none;
+  }
+
+  .nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav a {
+    padding: 6px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  main.shell {
+    padding-top: 20px;
+  }
 }

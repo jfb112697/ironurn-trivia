@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { setActiveGame, useActiveGame, useGameplayActive } from "../lib/activeGame";
+import type { ActiveGame } from "../lib/activeGame";
 import { href, useRoute } from "../lib/router";
 
 const LINKS: { to: string; label: string; match: (p: string) => boolean }[] = [
@@ -21,6 +24,31 @@ export function Urn({ size = 26 }: { size?: number }) {
 
 export function Layout({ children }: { children: ReactNode }) {
   const { path } = useRoute();
+  const active = useActiveGame();
+  const inGame = useGameplayActive();
+  const showResume = Boolean(active) && !inGame;
+
+  // Publish the sticky header's height so the board's column header can pin
+  // right below it (the header wraps to two lines on narrow screens).
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>(".top");
+    if (!header) return;
+    const apply = () =>
+      document.documentElement.style.setProperty(
+        "--header-h",
+        `${Math.round(header.getBoundingClientRect().height)}px`,
+      );
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  // Reserve room at the bottom of the document for the fixed bar.
+  useEffect(() => {
+    document.body.classList.toggle("has-resume", showResume);
+    return () => document.body.classList.remove("has-resume");
+  }, [showResume]);
 
   return (
     <>
@@ -50,6 +78,42 @@ export function Layout({ children }: { children: ReactNode }) {
         </span>
         <span>Built on Cloudflare's free tier.</span>
       </footer>
+      {showResume && active && <ResumeBar game={active} />}
     </>
+  );
+}
+
+/** Floating "pick up where you left off" bar. */
+function ResumeBar({ game }: { game: ActiveGame }) {
+  const found = Object.keys(game.solved).length;
+  const label =
+    game.config.mode === "daily"
+      ? "Daily in progress"
+      : game.config.mode === "mini"
+        ? "Mini in progress"
+        : game.config.mode === "live"
+          ? "Live game in progress"
+          : "Free Play in progress";
+
+  return (
+    <div className="resume" role="region" aria-label="Game in progress">
+      <div className="resume-txt">
+        <span className="resume-k">
+          {label} · {found}/{game.config.size} found
+        </span>
+        <span className="resume-t">{game.label || game.config.title}</span>
+      </div>
+      <a className="btn primary sm" href={href("/resume")}>
+        Continue
+      </a>
+      <button
+        className="resume-x"
+        title="Discard this game"
+        aria-label="Discard this game"
+        onClick={() => setActiveGame(null)}
+      >
+        ×
+      </button>
+    </div>
   );
 }

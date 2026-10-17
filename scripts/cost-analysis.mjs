@@ -89,10 +89,11 @@ async function main() {
   );
 
   console.log("Architecture assumed:");
-  console.log("  • Static client on Cloudflare Pages — static asset bandwidth is not metered.");
-  console.log("  • One dataset table per stat family, cached in the browser for a year (immutable).");
-  console.log("  • Daily/Mini puzzles computed client-side from a 2 KB templates file (no per-play request).");
-  console.log("  • Worker + R2 only for cold dataset reads, which the edge cache absorbs.\n");
+  console.log("  • One Worker serves the client and the whole dataset as static assets — free, unlimited,");
+  console.log("    and exempt from the Worker request quota.");
+  console.log("  • One dataset table per stat family, cached in the browser and version-keyed by revision.");
+  console.log("  • Daily/Mini puzzles computed client-side from a 3 KB templates file (no per-play request).");
+  console.log("  • /api/* (R2-backed) exists for third-party consumers; gameplay never calls it.\n");
 
   const perGameGz = gz / rows.length + 1.3 * 1024 * 1024; // one table + players.json
   const table1 = [];
@@ -105,9 +106,10 @@ async function main() {
     const cacheMisses = visits; // assume browser cache handles repeat games
     const bytes = cacheMisses * perGameGz;
 
-    // Worker requests: only dataset fetches go through the worker. Puzzles are local.
-    const workerRequests = cacheMisses * 2; // manifest + one table (players often shared)
-    const workerPerDay = workerRequests / 30;
+    // The app and the dataset are static assets, so a visitor never invokes the
+    // Worker. Only /api/* consumers would, and this model doesn't count them.
+    const workerRequests = 0;
+    const workerPerDay = 0;
 
     // R2: reads only on edge-cache miss. Assume 5% of visitors land on a cold colo.
     const r2Reads = Math.round(cacheMisses * 0.05 * 3);
@@ -130,23 +132,21 @@ async function main() {
   }
 
   console.log("Scenarios:\n");
-  table(["tier", "visits/mo", "client bytes", "worker req/mo", "over 100k/day?", "cost/mo"], table1);
+  table(["tier", "visits/mo", "static bytes", "worker req/mo", "over 100k/day?", "cost/mo"], table1);
 
   console.log(
     "\nNotes:\n" +
-      "  • Pages bandwidth is unlimited and free, so the 'client bytes' column costs nothing.\n" +
-      "  • The 100k/day Worker limit is the only real ceiling. Puzzles are computed client-side, so a\n" +
-      "    visitor only touches the Worker for dataset files — and a warm edge cache means R2 is rarely hit.\n" +
-      "  • A pure-static deploy (Pages + public R2 bucket, no Worker) removes that ceiling entirely at $0.\n" +
+      "  • Static assets are free and unlimited, so the 'static bytes' column costs nothing at any size.\n" +
+      "  • Gameplay makes ZERO Worker requests: the dataset is baked into the deploy and puzzles are\n" +
+      "    resolved in the browser. Traffic cannot exhaust the Worker quota.\n" +
+      "  • /api/* is the only metered surface, and only for third-party consumers of the dataset.\n" +
       "  • KV is deliberately unused for hot reads: at 1B reads/month KV would cost ~$3M, which is why\n" +
       "    the design serves immutable objects from R2 + the edge cache instead.\n",
   );
 
-  const worst = SCENARIOS[SCENARIOS.length - 1];
-  const worstPerDay = (worst.monthlyVisitors * 2) / 30;
   console.log(
-    `Free-tier headroom: the Worker allowance supports ~${Math.round((FREE.workerRequestsPerDay * 30) / 2).toLocaleString()} ` +
-      `dataset-fetching visitors per month; the viral scenario needs ~${Math.round(worstPerDay).toLocaleString()} requests/day.\n`,
+    `Free-tier headroom: the site itself has no request ceiling. The 100k/day Worker allowance applies ` +
+      `only to /api/* consumers (~${(FREE.workerRequestsPerDay * 30).toLocaleString()} calls/month).\n`,
   );
 }
 

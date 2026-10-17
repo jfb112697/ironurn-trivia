@@ -13,6 +13,12 @@ main = "src/index.ts"
 compatibility_date = "2025-09-01"
 workers_dev = true
 
+# Custom domain (the zone is on the same Cloudflare account). Wrangler creates
+# the DNS record and certificate on deploy.
+routes = [
+  { pattern = "trivia.jeremyblair.io", custom_domain = true }
+]
+
 [assets]
 # Filled by `npm run build` (Vite output + `scripts/bake-data.mjs`).
 directory = "../../apps/web/dist"

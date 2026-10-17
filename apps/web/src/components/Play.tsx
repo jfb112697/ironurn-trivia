@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { enterGameplay, gameIdentity, getActiveGame, setActiveGame } from "../lib/activeGame";
 import { computeLeaderboard, matchGuess } from "../lib/engine";
 import { loadDataset } from "../lib/data";
 import { describeCriteria, formatVal } from "../lib/format";
@@ -50,20 +51,30 @@ export function Play({ config, onExit }: { config: GameConfig; onExit: () => voi
 
   const feedId = useRef(0);
   const savedRef = useRef(false);
+  const identity = useMemo(() => gameIdentity(config), [config]);
+
+  // Hide the layout's Continue bar while a board is actually on screen.
+  useEffect(() => enterGameplay(), []);
 
   // ── load + rank ───────────────────────────────────────────────────────
   useEffect(() => {
     let alive = true;
     setStatus("loading");
     setError(null);
-    setSolved({});
-    setStrikes(Array(playerCount).fill(0));
-    setOut(Array(playerCount).fill(false));
-    setTurn(0);
-    setFeed([]);
-    setSecondsLeft(config.seconds);
     setShowMissed(false);
     savedRef.current = false;
+
+    // Resume an unfinished game when this is the same board; otherwise start
+    // fresh (which also replaces any other saved game).
+    const saved = getActiveGame();
+    const resume = saved && gameIdentity(saved.config) === identity ? saved : null;
+    setSolved(resume?.solved ?? {});
+    setStrikes(resume?.strikes ?? Array(playerCount).fill(0));
+    setOut(resume?.out ?? Array(playerCount).fill(false));
+    setTurn(resume?.turn ?? 0);
+    setFeed(resume?.feed ?? []);
+    setSecondsLeft(resume?.secondsLeft ?? config.seconds);
+    feedId.current = resume?.feed?.length ? Math.max(...resume.feed.map((f) => f.id)) : 0;
 
     loadDataset(config.criteria.stat)
       .then((dataset) => {
@@ -151,6 +162,30 @@ export function Play({ config, onExit }: { config: GameConfig; onExit: () => voi
       at: new Date().toISOString(),
     });
   }, [status, board, ds, error, playerCount, soloScore, solvedCount, config, won]);
+
+  // ── keep the resumable snapshot in sync while playing ─────────────────
+  useEffect(() => {
+    if (status !== "playing" || !board || !ds) return;
+    setActiveGame({
+      config,
+      label: config.mode === "free" || config.mode === "live" ? describeCriteria(ds, config.criteria) : config.title,
+      solved,
+      strikes,
+      out,
+      turn,
+      feed,
+      secondsLeft,
+      updatedAt: Date.now(),
+    });
+    // `secondsLeft` is intentionally not a dependency: persisting once per tick
+    // would be wasteful, and the last write already carries a sane value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, board, ds, identity, solved, strikes, out, turn, feed]);
+
+  // A finished game is no longer resumable.
+  useEffect(() => {
+    if (status === "over") setActiveGame(null);
+  }, [status]);
 
   // ── guessing ──────────────────────────────────────────────────────────
   const push = useCallback((v: Omit<Verdict, "id">) => {

@@ -6,6 +6,8 @@ jomboytrivia.com, designed to run **entirely on free tiers**.
 You get a statistic, a span of seasons and a player pool. Name the players who rank highest; the
 board is 100 deep for the Daily, each rank pays points, and you have three strikes.
 
+**Live: <https://trivia.jeremyblair.io>**
+
 ---
 
 ## Why this exists
@@ -17,16 +19,20 @@ limits completely and still costs nothing to host, by making every expensive thi
 ## Architecture
 
 ```
-                 ┌──────────────────────────── Cloudflare (free) ────────────────────────────┐
-                 │                                                                          │
-  browser ──────►│  Cloudflare Pages          Worker (workers/api)         R2 bucket        │
-                 │  static React bundle  ───► /api/manifest              ──►  v1/*.json        │
-                 │  (~65 KB gzip)             /api/dataset/:file  ────►  (immutable,        │
-                 │                            /api/templates             edge-cached)       │
-                 │  Daily/Mini puzzle         /api/schedule/ppd|ppm                          │
-                 │  computed LOCALLY          (deterministic, no DB)                         │
-                 └──────────────────────────────────────────────────────────────────────────┘
+              ┌──────────────────────── Cloudflare Worker (free) ──────────────────────┐
+              │                                                                       │
+ browser ────►│  static assets — FREE + UNLIMITED        /api/* ──► R2 (edge-cached)  │
+              │  • React bundle (~65 KB gzip)             • /api/manifest             │
+              │  • /data/*.json — the whole dataset       • /api/dataset/:file         │
+              │  • index.html                             • /api/schedule/ppd|ppm      │
+              │                                           (deterministic, no DB)      │
+              └───────────────────────────────────────────────────────────────────────┘
 ```
+
+One Worker serves everything, and **assets are matched before the script runs**: page loads, the
+client bundle and every dataset file are static, so the Worker is only reached for `/api/*`. Static
+asset requests are free and unlimited *and do not count against the Worker request quota* — which is
+why the site itself is free at any traffic level.
 
 The key decisions that keep it free:
 
@@ -34,8 +40,9 @@ The key decisions that keep it free:
 | --- | --- |
 | Daily/Mini puzzles are a **pure function of the date** | No database, no cron, no per-play compute. Any date — past or future — resolves instantly, so the whole archive works for free. |
 | Dataset is **precomputed JSON**, not queried | The pipeline does all the work; the runtime just ships bytes. |
-| Datasets are **immutable per revision** | `Cache-Control: max-age=31536000, immutable`. Repeat visitors re-download nothing. |
-| The manifest is the **only** short-lived resource | A data refresh becomes visible in about a minute; everything else is version-keyed by `?v=<generated>`. |
+| The dataset ships **inside the deploy** as static assets | No Worker invocations for gameplay at all, so traffic cannot exhaust the free quota. |
+| Datasets are **immutable per revision** | Cached in the browser's Cache Storage and version-keyed by `?v=<generated>`; repeat visitors re-download nothing. |
+| A deploy is the **revision boundary** | `manifest.json` revalidates on every load, so a data refresh lands as soon as the new Worker version is live. |
 | **No KV, no D1, no Durable Objects** | KV reads are metered per operation — at a billion reads/month that is ~$3M. R2 + the edge cache have no such cliff. |
 | Personal bests live in **localStorage** | No write traffic, no auth, no leaderboard infrastructure. |
 
@@ -43,20 +50,15 @@ The key decisions that keep it free:
 
 | Resource | Free allowance | This project's usage |
 | --- | --- | --- |
-| Cloudflare Pages bandwidth | **Unlimited, free** | the entire app bundle + assets |
-| Workers requests | 100,000/day | ~2 requests per *new* visitor (manifest + one table) |
+| Static assets (app + dataset) | **Unlimited, free** | every page load and every dataset file |
+| Workers requests | 100,000/day | **0** for gameplay; only third-party `/api/*` calls |
 | R2 storage | 10 GB | ~10 MB per revision |
 | R2 reads (Class B) | 10 M/month | only on an edge-cache miss |
 | GitHub Actions | free for public repos | a few minutes per data refresh |
 
-Run `npm run analyze` to print the current sizes and priced scenarios. Head room: the 100k/day Worker
-allowance covers roughly **1.5 million dataset-fetching visitors per month**. If you ever outgrow it,
-deploy the app as **pure static** against a public R2 bucket — 0 Worker requests.
-
-**Cloudflare Pages vs GitHub Pages:** Pages wins because static-asset bandwidth is unmetered.
-GitHub Pages has a ~100 GB/month soft cap, and each first-time visitor here pulls ~4 MB, so roughly
-25k visitors/month would throttle you. Pages also keeps the app and the API on one origin via a
-custom domain.
+Run `npm run analyze` to print the current sizes and priced scenarios. Because the client and the
+dataset are static, **traffic does not consume the Worker quota at all** — the 100k/day allowance is
+only there for the optional `/api/*` surface, which is comfortably ~1.5M calls/month.
 
 ---
 
@@ -75,7 +77,7 @@ npm run data:all
 npm run dev          # http://localhost:5173
 ```
 
-`npm run dev` serves `data/out/*` at `/api/*` through a Vite middleware, so the whole game works
+`npm run dev` serves `data/out/*` at `/data/*` through a Vite middleware, so the whole game works
 locally with **no Cloudflare account required**.
 
 Useful scripts:
@@ -85,12 +87,13 @@ Useful scripts:
 | `npm run dev` | Vite dev server with the local dataset middleware |
 | `npm run dev:api` | `wrangler dev` for the edge Worker |
 | `npm run typecheck` | TypeScript for both the client and the Worker |
-| `npm run build` | Production client build |
-| `npm run verify` | Runs the 25-check engine self-test against Python reference output |
+| `npm run build` | Production client build, then bake `data/out` into `apps/web/dist/data` |
+| `npm run verify` | Runs the 31-check engine self-test against Python reference output |
 | `npm run analyze` | Dataset sizes + free-tier cost model |
 | `npm run data:all` | Fetch + build + schedule |
 | `npm run data:refresh` | Re-fetch pybaseball sources and rebuild (current-season update) |
-| `npm run seed` | Upload `data/out` to R2 via wrangler |
+| `npm run seed` | Upload `data/out` to R2 for the `/api/*` surface |
+| `npm run deploy` | Build, bake and deploy the Worker (app + API) |
 
 ---
 
@@ -167,61 +170,57 @@ Free Play boards pick it up automatically.
 
 ## Deploying to Cloudflare
 
-> Hosting is **Pages** (client) + **Workers + R2** (API/data).
+> One **Worker** serves the static app (bundle + baked dataset) and the `/api/*` surface backed by R2.
+> Live at **<https://trivia.jeremyblair.io>**.
 
 ### 1. Create the resources
 
 ```bash
 npx wrangler login
 npx wrangler r2 bucket create ironurn-dataset
-npx wrangler pages project create ironurn --production-branch=main
 ```
 
-### 2. Publish the dataset
+### 2. Build and deploy
 
 ```bash
-npm run data:all
-npm run seed
+npm run data:all      # once — the dataset is baked into the deploy
+npm run seed          # uploads data/out to R2 for /api/*
+npm run deploy        # build + bake + deploy the Worker
 ```
 
-### 3. Deploy
+The custom domain is declared in `workers/api/wrangler.toml`:
 
-```bash
-npm run deploy:api     # Worker
-npm run deploy:web     # Pages (apps/web)
+```toml
+routes = [{ pattern = "trivia.jeremyblair.io", custom_domain = true }]
 ```
 
-Or let CI do it — push to `main` and the **Deploy** workflow handles both.
+Wrangler creates the DNS record and certificate automatically because the zone is on the same
+account. Drop that line to deploy to `https://ironurn.<subdomain>.workers.dev` instead.
 
-### 4. Wire the client to the API
+### 3. Let CI do it
 
-Set the `API_BASE` repository variable to your Worker's URL so the built client knows where to fetch:
-
-```
-Repo → Settings → Secrets and variables → Actions → Variables
-  API_BASE = https://ironurn-api.<your-subdomain>.workers.dev/api
-```
-
-Locally it defaults to `/api` (served by the Vite middleware).
+Push to `main` and the **Deploy** workflow rebuilds the client, restores the current dataset from R2,
+bakes it in and deploys. Add the secrets below to enable it.
 
 ### Configuration
 
 | Kind | Name | Purpose |
 | --- | --- | --- |
-| Secret | `CLOUDFLARE_API_TOKEN` | Workers Scripts:Edit, Workers R2 Storage:Edit, Cloudflare Pages:Edit, Account:Read |
+| Secret | `CLOUDFLARE_API_TOKEN` | Workers Scripts:Edit, Workers R2 Storage:Edit + Read, Account:Read, DNS/Workers Routes (for the custom domain) |
 | Secret | `CLOUDFLARE_ACCOUNT_ID` | your account id |
-| Variable | `API_BASE` | Worker URL baked into the client |
 | Variable | `R2_BUCKET` | defaults to `ironurn-dataset` |
 | Variable | `DATASET_PREFIX` | defaults to `v1` |
-| Variable | `PAGES_PROJECT` | defaults to `ironurn` |
+
+`VITE_DATA_BASE` is optional and defaults to `/data` (the baked static copy). Point it at
+`https://<worker>/api` to make a client read from R2 instead.
 
 ## GitHub Actions
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, PRs | typecheck, build the client, rebuild the dataset and run the engine self-test |
-| `deploy.yml` | push to `main` (app/worker paths), manual | deploys the Worker and publishes the client to Pages |
-| `refresh-data.yml` | **cron + manual** | rebuilds the dataset from pybaseball and uploads it to R2 |
+| `ci.yml` | push to `main`, PRs | typecheck, build, rebuild the dataset, engine self-test, verify the bake |
+| `deploy.yml` | push to `main` (app/worker paths), manual | builds + bakes + deploys the Worker |
+| `refresh-data.yml` | **cron + manual** | rebuilds the dataset from pybaseball, publishes it as static assets, refreshes R2 |
 
 ### Setting the refresh interval
 
@@ -253,11 +252,19 @@ Two caveats worth knowing:
 apps/web/            React + TypeScript client (Vite)
   src/lib/engine.ts  the Pinpoint engine: ranking, scoring, guess matching
   src/lib/schedule.ts deterministic puzzle resolution (mirrors schedule.py)
+  src/lib/activeGame.ts the one resumable game (Continue bar)
   src/pages/         Home, Free Play, Live, Archive, My Stats, How to Play
 data/                Python data pipeline (pybaseball + Lahman)
-workers/api/         Cloudflare Worker: dataset serving + schedule resolution
-scripts/             R2 seeding, cost analysis, engine self-test
+workers/api/         Cloudflare Worker: static assets + dataset serving + schedule
+scripts/             bake-data, fetch-data, R2 seeding, cost analysis, engine self-test
 ```
+
+### The Continue bar
+
+An unfinished board is snapshotted to `localStorage` while you play. Navigating away shows a floating
+**Continue** bar (a bottom bar on mobile, a card bottom-right on desktop) that restores the exact
+board — including Free Play and Live, whose configs never appear in the URL. Starting another game
+replaces the snapshot; finishing or dismissing it clears the bar.
 
 ## Notes on data
 
