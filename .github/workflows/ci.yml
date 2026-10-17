@@ -63,3 +63,10 @@ jobs:
 
       - name: Verify the TypeScript engine against the Python reference
         run: npm run verify
+
+      - name: Verify the dataset bakes into the client build
+        run: |
+          npm run build
+          test -f apps/web/dist/data/manifest.json
+          test -f apps/web/dist/data/batting.json
+          echo "Baked $(ls apps/web/dist/data | wc -l) dataset files into the static assets."

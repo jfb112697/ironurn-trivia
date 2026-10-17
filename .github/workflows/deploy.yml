@@ -1,11 +1,20 @@
 name: Deploy
 
+# Builds the client, bakes the dataset in as static assets, and deploys the
+# single Worker that serves both the app and /api/*.
+#
+# Static assets (the app bundle and the baked dataset) are free and unlimited
+# on Cloudflare and do not count against the Worker request quota — only /api/*
+# invocations do.
+
 on:
   push:
     branches: [main]
     paths:
       - "apps/web/**"
       - "workers/api/**"
+      - "scripts/bake-data.mjs"
+      - "scripts/fetch-data.mjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/deploy.yml"
@@ -35,14 +44,16 @@ jobs:
             echo "::notice title=Deploy skipped::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to enable deploys."
           fi
 
-  api:
-    name: Deploy edge API (Worker + R2)
+  deploy:
+    name: Build and deploy
     needs: preflight
     if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'ironurn-dataset' }}
+      DATASET_PREFIX: ${{ vars.DATASET_PREFIX || 'v1' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,39 +65,14 @@ jobs:
       - run: npm ci
 
       - name: Ensure the R2 bucket exists
-        run: npx wrangler r2 bucket create "${{ vars.R2_BUCKET || 'ironurn-dataset' }}" || true
+        run: npx wrangler r2 bucket create "$R2_BUCKET" || true
 
-      - name: Deploy the Worker
+      - name: Restore the current dataset as static assets
+        run: node scripts/fetch-data.mjs
+
+      - name: Build the client and bake the dataset
+        run: npm run build
+
+      - name: Deploy the Worker (app + API)
         working-directory: workers/api
         run: npx wrangler deploy
-
-  web:
-    name: Deploy web app (Cloudflare Pages)
-    needs: preflight
-    if: needs.preflight.outputs.configured == 'true'
-    runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - run: npm ci
-
-      - name: Build the client
-        run: npm --workspace apps/web run build
-        env:
-          # Set the API_BASE repository variable to the deployed Worker URL,
-          # e.g. https://ironurn-api.<your-subdomain>.workers.dev/api
-          VITE_DATA_BASE: ${{ vars.API_BASE || '/api' }}
-
-      - name: Ensure the Pages project exists
-        run: npx wrangler pages project create "${{ vars.PAGES_PROJECT || 'ironurn' }}" --production-branch=main || true
-
-      - name: Publish to Cloudflare Pages
-        run: npx wrangler pages deploy apps/web/dist --project-name="${{ vars.PAGES_PROJECT || 'ironurn' }}" --branch=main

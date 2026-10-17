@@ -16,14 +16,14 @@
     "data:all": "npm --workspace data run all",
     "dev": "npm --workspace apps/web run dev",
     "dev:api": "npm --workspace workers/api run dev",
-    "build": "npm --workspace apps/web run build",
+    "build": "npm --workspace apps/web run build && node scripts/bake-data.mjs",
     "preview": "npm --workspace apps/web run preview",
     "typecheck": "npm --workspace apps/web run typecheck && npm --workspace workers/api run typecheck",
     "verify": "node scripts/run-ts.mjs scripts/engine-selftest.ts",
     "seed": "node scripts/seed-r2.mjs",
     "seed:remote": "node scripts/seed-r2.mjs --remote",
+    "deploy": "npm run build && npm --workspace workers/api run deploy",
     "deploy:api": "npm --workspace workers/api run deploy",
-    "deploy:web": "npm --workspace apps/web run deploy",
     "analyze": "node scripts/cost-analysis.mjs"
   },
   "engines": {

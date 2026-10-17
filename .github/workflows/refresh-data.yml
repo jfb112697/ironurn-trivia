@@ -1,8 +1,7 @@
 name: Refresh dataset
 
-# Rebuilds the dataset from pybaseball (Baseball Reference + Chadwick) and
-# uploads it to R2. This is the "keep the data current" job — change the cron
-# below to taste, or trigger it by hand from the Actions tab.
+# Rebuilds the dataset from pybaseball (Baseball Reference + Chadwick), ships it
+# inside the deploy as static assets, and refreshes the R2 copy behind /api/*.
 #
 #   • Daily at 09:17 UTC        -> "17 9 * * *"
 #   • Every 6 hours             -> "17 */6 * * *"
@@ -53,10 +52,15 @@ jobs:
           fi
 
   refresh:
-    name: Rebuild and upload
+    name: Rebuild, publish and upload
     needs: preflight
     if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'ironurn-dataset' }}
+      DATASET_PREFIX: ${{ vars.DATASET_PREFIX || 'v1' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,31 +92,32 @@ jobs:
 
       - run: npm ci
 
+      # The site first: the dataset is baked into the deploy, so publishing the
+      # Worker makes the new season visible to players immediately.
+      - name: Build the client and bake the dataset
+        run: npm run build
+
+      - name: Deploy the Worker (app + API)
+        working-directory: workers/api
+        run: npx wrangler deploy
+
+      # Then the API copy behind R2.
       - name: Ensure the R2 bucket exists
         run: npx wrangler r2 bucket create "$R2_BUCKET" || true
-        env:
-          R2_BUCKET: ${{ vars.R2_BUCKET || 'ironurn-dataset' }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Upload the dataset to R2
         run: node scripts/seed-r2.mjs
-        env:
-          R2_BUCKET: ${{ vars.R2_BUCKET || 'ironurn-dataset' }}
-          DATASET_PREFIX: ${{ vars.DATASET_PREFIX || 'v1' }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Job summary
         run: |
           {
-            echo "### Dataset refreshed"
+            echo "### Dataset refreshed and published"
             echo
             echo '```json'
             cat data/out/meta.json | python -m json.tool | head -n 20
             echo '```'
             echo
-            echo "A new revision is picked up by clients within about a minute"
-            echo "(the manifest is served with a short TTL; every other dataset file"
-            echo "is version-keyed by the manifest's \`generated\` timestamp)."
+            echo "The new season is live in the app (baked into the static assets)"
+            echo "and behind the /api/* endpoints (R2, keyed by the manifest's"
+            echo "\`generated\` revision so edge caches refresh on their own)."
           } >> "$GITHUB_STEP_SUMMARY"

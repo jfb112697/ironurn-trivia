@@ -8,12 +8,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DATASET_DIR = resolve(here, "../../data/out");
 
 /**
- * Serves `data/out/*` at the same `/api/*` paths the edge worker uses, so the
- * app can be developed end-to-end with no Cloudflare account:
+ * Serves the prebuilt dataset (`data/out/*.json`) at the same `/data/*` paths
+ * the deployed app uses, so the client can be developed end-to-end with no
+ * Cloudflare account and no deploy:
  *
- *   /api/manifest            -> data/out/manifest.json
- *   /api/templates           -> data/out/templates.json
- *   /api/dataset/<file>.json -> data/out/<file>.json
+ *   /data/manifest.json  -> data/out/manifest.json
+ *   /data/templates.json -> data/out/templates.json
+ *   /data/batting.json   -> data/out/batting.json
+ *
+ * In production these files are baked into the build output by
+ * `scripts/bake-data.mjs` and served as static assets.
  */
 function datasetMiddleware() {
   return {
@@ -25,18 +29,10 @@ function datasetMiddleware() {
     }) {
       server.middlewares.use(async (req: any, res: any, next: () => void) => {
         const path = String(req.url || "").split("?")[0];
-        let file: string | null = null;
-
-        if (path === "/api/manifest") file = "manifest.json";
-        else if (path === "/api/templates") file = "templates.json";
-        else if (path.startsWith("/api/dataset/")) file = path.slice("/api/dataset/".length);
+        const match = /^\/data\/([a-z0-9_.-]+\.json)$/i.exec(path);
+        const file = match ? match[1] : null;
 
         if (!file) return next();
-        if (!/^[a-z0-9_.-]+\.json$/i.test(file)) {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ error: "bad_file" }));
-          return;
-        }
 
         try {
           const body = await readFile(join(DATASET_DIR, file));

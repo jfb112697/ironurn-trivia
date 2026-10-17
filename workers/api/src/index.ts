@@ -1,7 +1,13 @@
 /**
  * IronUrn Trivia — edge API.
  *
- * Responsibilities (deliberately tiny, so it stays free at any scale):
+ * This Worker also hosts the React app: everything in `apps/web/dist` (the
+ * client bundle plus the baked dataset) is served as static assets, which are
+ * free, unlimited and exempt from the Worker request quota. The Worker script
+ * itself only runs for requests that match no asset — in practice `/api/*`.
+ *
+ * Responsibilities of the script (deliberately tiny, so it stays free at any
+ * scale):
  *   • Serve the compact, prebuilt datasets from R2 through the edge cache.
  *   • Resolve daily/mini puzzles deterministically (no database, no cron).
  *
@@ -151,6 +157,31 @@ export default {
 
       if (path === "/api/templates") {
         return await serveObject(env, ctx, "templates.json", "immutable", origin, method);
+      }
+
+      // Plain-file aliases. A client built with `VITE_DATA_BASE=<worker>/api`
+      // then uses exactly the same `/data/<file>.json` URL shapes it uses
+      // against the static assets, which keeps both delivery paths identical.
+      const alias = /^\/api\/([a-z]+)\.json$/.exec(path);
+      if (alias) {
+        const file = `${alias[1]}.json`;
+        if (DATASET_FILES.has(file) && file !== "schedule.json") {
+          const kind = file === "manifest.json" ? "short" : "immutable";
+          return await serveObject(env, ctx, file, kind, origin, method, url.searchParams.get("v") ?? "");
+        }
+      }
+
+      // /data/<file>.json is normally served directly as a static asset, which
+      // is free and unlimited. It only reaches this code when the file was not
+      // baked into the deploy (e.g. a code-only deploy before the first data
+      // refresh) — then R2 keeps the app working.
+      const dataFile = /^\/data\/([a-z]+)\.json$/.exec(path);
+      if (dataFile) {
+        const file = `${dataFile[1]}.json`;
+        if (DATASET_FILES.has(file) && file !== "schedule.json") {
+          const kind = file === "manifest.json" ? "short" : "immutable";
+          return await serveObject(env, ctx, file, kind, origin, method, url.searchParams.get("v") ?? "");
+        }
       }
 
       if (path.startsWith("/api/dataset/")) {

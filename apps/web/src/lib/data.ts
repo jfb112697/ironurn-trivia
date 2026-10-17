@@ -1,14 +1,22 @@
 /**
  * Dataset loading.
  *
- * Everything is fetched from the edge API (`/api/*` by default, overridable
- * with `VITE_DATA_BASE`). Datasets are immutable per dataset revision, so we
- * cache them in the browser's Cache Storage as well as in memory; the manifest
- * is the only short-lived resource and provides the revision string.
+ * In production the dataset ships *with* the app: `npm run build` bakes
+ * `data/out/*.json` into the deploy (`apps/web/dist/data`) and Cloudflare serves
+ * it as static assets. Static-asset requests are free and unlimited and do not
+ * count against the Worker request quota, so the site costs nothing at any
+ * traffic level.
+ *
+ * `VITE_DATA_BASE` can point the same client at the edge API instead
+ * (`https://<worker>.workers.dev/api`), which serves identical files out of R2.
+ *
+ * Datasets are immutable for a given revision, so they are cached in the
+ * browser's Cache Storage as well as in memory; the manifest is the only
+ * short-lived resource and provides the revision string.
  */
 import type { Dataset, Manifest, Meta, Players, Teams, Templates } from "./types";
 
-const DATA_BASE = ((import.meta.env.VITE_DATA_BASE as string | undefined) ?? "/api").replace(/\/+$/, "");
+const DATA_BASE = ((import.meta.env.VITE_DATA_BASE as string | undefined) ?? "/data").replace(/\/+$/, "");
 const CACHE_NAME = "ironurn-dataset-v1";
 
 let manifestPromise: Promise<Manifest> | null = null;
@@ -72,7 +80,7 @@ function once<T>(url: string, persist: boolean): Promise<T> {
 
 export function loadManifest(): Promise<Manifest> {
   // Short-lived: never persisted to Cache Storage, so a data refresh is picked up.
-  manifestPromise ??= fetchJson<Manifest>(`${DATA_BASE}/manifest`, false);
+  manifestPromise ??= fetchJson<Manifest>(`${DATA_BASE}/manifest.json`, false);
   return manifestPromise;
 }
 
@@ -82,12 +90,12 @@ export function loadMeta(): Promise<Meta> {
 }
 
 export function loadTemplates(): Promise<Templates> {
-  templatesPromise ??= once<Templates>(`${DATA_BASE}/templates`, true);
+  templatesPromise ??= once<Templates>(`${DATA_BASE}/templates.json`, true);
   return templatesPromise;
 }
 
 async function file<T>(name: string, version?: string): Promise<T> {
-  const url = `${DATA_BASE}/dataset/${name}${version ? `?v=${encodeURIComponent(version)}` : ""}`;
+  const url = `${DATA_BASE}/${name}${version ? `?v=${encodeURIComponent(version)}` : ""}`;
   return once<T>(url, true);
 }
 

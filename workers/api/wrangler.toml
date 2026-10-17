@@ -1,10 +1,25 @@
-name = "ironurn-api"
+# A single Worker serves the whole product:
+#
+#   • the React app and the baked dataset  -> static assets (free + unlimited,
+#     and they do not count against the Worker request quota)
+#   • /api/*                               -> this Worker script, reading R2
+#
+# Static assets are matched first; the Worker only runs for requests that match
+# no asset, which in practice means /api/*. `not_found_handling` is deliberately
+# left unset — setting it to `single-page-application` would make unmatched
+# paths (including /api/*) return index.html instead of reaching the Worker.
+name = "ironurn"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 workers_dev = true
 
+[assets]
+# Filled by `npm run build` (Vite output + `scripts/bake-data.mjs`).
+directory = "../../apps/web/dist"
+
 # Static datasets live in R2 and are served through the edge cache, so a warm
-# deployment answers reads without touching R2 at all.
+# deployment answers reads without touching R2 at all. The app itself reads the
+# baked static copies; R2 backs the public /api/* surface.
 [[r2_buckets]]
 binding = "DATASET"
 bucket_name = "ironurn-dataset"
